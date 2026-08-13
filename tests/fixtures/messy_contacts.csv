@@ -1,0 +1,7 @@
+ Name ,name,email,note
+ Alice ,Alice,alice@example.com,"=HYPERLINK(""https://example.test"",""Open"")"
+Bob,Bob,+1 (555) 123-4567," normal "
+Bob,Bob,+1 (555) 123-4567," normal "
+,,,
+Carol,Carol,carol@example.com,"@SUM(1,2)"
+Ragged,only-two

@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a focused improvement that preserves SheetSentry's local-first safety model.
+title: "feature: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the proposal. SheetSentry is intentionally local-first and explicit about transformations. Please do not include private data or request features that require sending user files to a third party.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the concrete, recurring user problem.
+      placeholder: "When I receive TSV exports from …, I need … because …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the command, flag, report shape, or library behavior you expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain workarounds, related tools, or why the behavior belongs in SheetSentry.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety expectations
+      options:
+        - label: The proposal does not require external network calls or automatic in-place modification.
+          required: true
+        - label: I have considered how the proposed behavior could be tested with synthetic data.
+          required: true

@@ -1,0 +1,51 @@
+name: Bug report
+description: Report unexpected SheetSentry behavior with a safe, reproducible example.
+title: "bug: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for improving SheetSentry. Do not include production CSV files, credentials, customer records, or personal data. Use synthetic or redacted examples only.
+
+  - type: input
+    id: version
+    attributes:
+      label: SheetSentry version
+      description: Run `sheetsentry --version`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and Python version.
+      placeholder: "Ubuntu 24.04, Python 3.12"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and safe sample input
+      description: Include the exact command and a minimal synthetic CSV/TSV sample.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include complete output or traceback, after removing sensitive data.
+    validations:
+      required: true
