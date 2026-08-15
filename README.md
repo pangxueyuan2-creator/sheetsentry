@@ -1,8 +1,8 @@
 # SheetSentry
 
-**Inspect and safely prepare CSV/TSV files before sharing or import.**
+Local CLI for inspecting and cleaning CSV/TSV files before you share or import them.
 
-Local-first, zero-dependency CLI. Checks structure, flags formula-like cells, and can write a cleaned copy. Never uploads anything and never overwrites the original.
+Zero dependencies. Checks structure, flags formula-like cells, and can write a cleaned copy. Never uploads anything and never overwrites the original file.
 
 ## Quick start
 
@@ -25,14 +25,14 @@ sheetsentry sanitize exports/customers.csv \
 ## Commands
 
 ```text
-sheetsentry inspect FILE     Report problems
-sheetsentry validate FILE    Same, but fail on threshold (for CI)
-sheetsentry sanitize FILE    Write a cleaned copy
+sheetsentry inspect FILE     report problems
+sheetsentry validate FILE    same, but fail on threshold (for CI)
+sheetsentry sanitize FILE    write a cleaned copy
 ```
 
 ## Notes
 
-- Formula mitigation is not universal across spreadsheet apps — keep the original and test the result
-- Not a full PII tool or spreadsheet engine
+- Formula mitigation is not perfect across every spreadsheet app — keep the original and test the result
+- Not a full PII scanner or spreadsheet engine
 
-MIT License.
+MIT.
