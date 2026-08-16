@@ -113,6 +113,40 @@ class SanitizationTests(unittest.TestCase):
             self.assertEqual(output.read_text(encoding="utf-8"), "preserve me")
 
 
+class HeaderFormulaInjectionTests(unittest.TestCase):
+    def test_sanitize_neutralizes_formula_like_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "evil_headers.csv"
+            source.write_text(
+                'name,"=HYPERLINK(""http://evil.test"",""x"")","@SUM(1,2)"\nalice,1,2\n',
+                encoding="utf-8",
+            )
+            output = Path(directory) / "clean.csv"
+            audit = sanitize_file(source, output, SanitizationOptions(formula_policy="apostrophe"))
+            with output.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.reader(handle))
+            output_report = inspect_file(output)
+
+        self.assertEqual(
+            rows[0],
+            ["name", '\'=HYPERLINK("http://evil.test","x")', "'@SUM(1,2)"],
+        )
+        self.assertEqual(audit.modifications["formula_cells_prefixed"], 2)
+        self.assertEqual(output_report.summary.formula_like_cell_count, 0)
+
+    def test_inspect_reports_formula_like_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "evil_headers.csv"
+            path.write_text(
+                'name,"=HYPERLINK(""http://evil.test"",""x"")"\nalice,1\n',
+                encoding="utf-8",
+            )
+            report = inspect_file(path)
+        codes = {issue.code for issue in report.issues}
+        self.assertIn("formula-like-header", codes)
+        self.assertEqual(report.summary.formula_like_cell_count, 0)
+
+
 class CommandLineTests(unittest.TestCase):
     def _run_quietly(self, arguments: list[str]) -> tuple[int, str, str]:
         stdout, stderr = StringIO(), StringIO()
