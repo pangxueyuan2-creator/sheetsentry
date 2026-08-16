@@ -129,7 +129,7 @@ class HeaderFormulaInjectionTests(unittest.TestCase):
 
         self.assertEqual(
             rows[0],
-            ["name", "'=HYPERLINK(\"http://evil.test\",\"x\")", "'@SUM(1,2)"],
+            ["name", '\'=HYPERLINK("http://evil.test","x")', "'@SUM(1,2)"],
         )
         self.assertEqual(audit.modifications["formula_cells_prefixed"], 2)
         self.assertEqual(output_report.summary.formula_like_cell_count, 0)
@@ -145,7 +145,6 @@ class HeaderFormulaInjectionTests(unittest.TestCase):
         codes = {issue.code for issue in report.issues}
         self.assertIn("formula-like-header", codes)
         self.assertEqual(report.summary.formula_like_cell_count, 0)
-
 
 
 class CommandLineTests(unittest.TestCase):
