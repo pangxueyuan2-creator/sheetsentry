@@ -76,7 +76,7 @@ def sanitize_file(
         with open_rows(input_path, options.input_delimiter) as opened_rows:
             reader, _encoding, _delimiter, _handle = opened_rows
             headers = next(reader, None)
-            if headers is None:
+            if headers is None or not any(cell.strip() for cell in headers):
                 raise InputError("Cannot sanitize an empty file without a header row.")
             output_headers = headers
             if options.normalize_headers:

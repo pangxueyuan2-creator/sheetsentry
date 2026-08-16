@@ -57,7 +57,7 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
     issues: list[Issue] = []
     with open_rows(path, delimiter) as (reader, encoding, actual_delimiter, _handle):
         headers = next(reader, None)
-        if headers is None:
+        if headers is None or not any(cell.strip() for cell in headers):
             summary = FileSummary(
                 path=str(path),
                 encoding=encoding,

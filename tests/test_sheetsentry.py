@@ -63,6 +63,38 @@ class InspectionTests(unittest.TestCase):
             with self.assertRaises(InputError):
                 inspect_file(path)
 
+    def test_blank_only_file_reports_missing_header_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "blank.csv"
+            path.write_bytes(b"\n")
+            report = inspect_file(path)
+        self.assertEqual([issue.code for issue in report.issues], ["empty-file"])
+        self.assertEqual(report.summary.column_count, 0)
+        self.assertEqual(report.summary.total_row_count, 0)
+
+    def test_multiple_blank_lines_report_missing_header_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "blanks.csv"
+            path.write_bytes(b"\n\n")
+            report = inspect_file(path)
+        self.assertEqual([issue.code for issue in report.issues], ["empty-file"])
+
+    def test_whitespace_only_line_reports_missing_header_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "spaces.csv"
+            path.write_bytes(b"  \t\n")
+            report = inspect_file(path)
+        self.assertEqual([issue.code for issue in report.issues], ["empty-file"])
+
+    def test_refuses_blank_only_input_without_header_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "blank.csv"
+            source.write_bytes(b"\n")
+            output = Path(directory) / "clean.csv"
+            with self.assertRaises(InputError):
+                sanitize_file(source, output, SanitizationOptions(trim=True))
+            self.assertFalse(output.exists())
+
 
 class SanitizationTests(unittest.TestCase):
     def test_sanitize_writes_separate_auditable_output(self) -> None:
