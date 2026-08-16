@@ -85,6 +85,14 @@ def sanitize_file(
                     original != normalized
                     for original, normalized in zip(headers, output_headers, strict=True)
                 )
+            # Spreadsheet applications execute formulas in header cells too, so the
+            # formula policy must cover the header row, not only data rows.
+            neutralized_headers: list[str] = []
+            for cell in output_headers:
+                current, prefixed = _apply_formula_policy(cell, options.formula_policy)
+                if prefixed:
+                    modifications["formula_cells_prefixed"] += 1
+                neutralized_headers.append(current)
 
             with tempfile.NamedTemporaryFile(
                 mode="w",
@@ -97,7 +105,7 @@ def sanitize_file(
             ) as temporary:
                 temp_name = temporary.name
                 writer = csv.writer(temporary, delimiter=options.output_delimiter)
-                writer.writerow(output_headers)
+                writer.writerow(neutralized_headers)
                 seen_rows: set[tuple[str, ...]] = set()
 
                 for row in reader:
