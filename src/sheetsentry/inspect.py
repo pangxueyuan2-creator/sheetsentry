@@ -87,7 +87,11 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
             for header, count in Counter(header for header in normalized_headers if header).items()
             if count > 1
         )
-        formula_like_headers = [header for header in headers if is_formula_like(header)]
+        formula_like_headers = [
+            (column, header)
+            for column, header in enumerate(headers, start=1)
+            if is_formula_like(header)
+        ]
         for candidate in (
             _issue(
                 "blank-header",
@@ -107,10 +111,7 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
                 "One or more headers look like spreadsheet formulas. "
                 "Spreadsheet applications may execute them.",
                 len(formula_like_headers),
-                samples=[
-                    _sample(1, column, header)
-                    for column, header in enumerate(formula_like_headers, start=1)
-                ][:3],
+                samples=[_sample(1, column, header) for column, header in formula_like_headers][:3],
             ),
         ):
             if candidate:
