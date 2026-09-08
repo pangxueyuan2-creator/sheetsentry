@@ -1,70 +1,55 @@
-"""Read-only checks for common delimited-file quality and safety concerns."""
+"""Inspection routines for CSV/TSV files."""
 
 from __future__ import annotations
 
-import re
+import csv
 from collections import Counter
 from pathlib import Path
 
-from .models import FileSummary, InspectionReport, Issue
-from .reader import open_rows
+from .models import InspectionReport, Issue, Summary
+from .policy import is_formula_like, looks_like_pii
 
 _REPORT_SCHEMA_VERSION = "1.0"
-_FORMULA_PREFIXES = (
-    "=",
-    "+",
-    "-",
-    "@",
-    "\t",
-    "\r",
-    "\n",
-    "\uff1d",
-    "\uff0b",
-    "\uff0d",
-    "\uff20",
-)
-_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9 .()/-]{6,}[0-9]$")
 
 
-def is_formula_like(value: str) -> bool:
-    """Return whether a cell could be interpreted as a spreadsheet formula."""
-
-    return value.lstrip(" \f\v").startswith(_FORMULA_PREFIXES)
-
-
-def _is_potential_pii(value: str) -> bool:
-    trimmed = value.strip()
-    return bool(_EMAIL_PATTERN.fullmatch(trimmed) or _PHONE_PATTERN.fullmatch(trimmed))
-
-
-def _sample(row_number: int, column_number: int, value: str) -> str:
-    safe_value = value[:80].replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-    return f"row {row_number}, column {column_number}: {safe_value!r}"
+def _sample(row: int, column: int, value: str) -> str:
+    return f"row {row}, column {column}: {value!r}"
 
 
 def _issue(
-    code: str, severity: str, message: str, count: int, samples: list[str] | None = None
+    code: str,
+    severity: str,
+    message: str,
+    count: int,
+    *,
+    samples: list[str] | None = None,
 ) -> Issue | None:
-    if count == 0:
+    if count <= 0:
         return None
-    return Issue(code=code, severity=severity, message=message, count=count, samples=samples or [])
+    return Issue(code, severity, message, count=count, samples=samples or [])
+
+
+def _detect_delimiter(path: Path) -> str:
+    sample = path.read_text(encoding="utf-8-sig", errors="replace")[:8192]
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",\t;|").delimiter
+    except csv.Error:
+        return "\t" if "\t" in sample else ","
 
 
 def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
-    """Inspect one local CSV/TSV-style file without modifying it."""
-
+    delimiter = delimiter or _detect_delimiter(path)
     issues: list[Issue] = []
-    with open_rows(path, delimiter) as (reader, encoding, actual_delimiter, _handle):
-        headers = next(reader, None)
-        if headers is None or not any(cell.strip() for cell in headers):
-            summary = FileSummary(
-                path=str(path),
-                encoding=encoding,
-                delimiter=actual_delimiter,
+
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle, delimiter=delimiter)
+        try:
+            headers = next(reader)
+        except StopIteration:
+            summary = Summary(
+                delimiter=delimiter,
                 column_count=0,
                 data_row_count=0,
-                total_row_count=0,
                 blank_row_count=0,
                 blank_cell_count=0,
                 duplicate_row_count=0,
@@ -111,10 +96,9 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
                 "One or more headers look like spreadsheet formulas. "
                 "Spreadsheet applications may execute them.",
                 len(formula_like_headers),
-                samples=[
-                    _sample(1, column, header)
-                    for column, header in formula_like_headers
-                ][:3],
+                samples=[_sample(1, column, header) for column, header in formula_like_headers][
+                    :3
+                ],
             ),
         ):
             if candidate:
@@ -123,104 +107,87 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
         data_row_count = 0
         blank_row_count = 0
         blank_cell_count = 0
-        duplicate_row_count = 0
         ragged_row_count = 0
         whitespace_cell_count = 0
         formula_like_cell_count = 0
         potential_pii_cell_count = 0
-        formula_samples: list[str] = []
-        pii_samples: list[str] = []
-        ragged_samples: list[str] = []
-        seen_rows: set[tuple[str, ...]] = set()
+        duplicate_row_count = 0
+        seen_rows: Counter[tuple[str, ...]] = Counter()
 
         for row_number, row in enumerate(reader, start=2):
             data_row_count += 1
-            if not any(cell.strip() for cell in row):
+            if not row or all(not cell.strip() for cell in row):
                 blank_row_count += 1
             if len(row) != len(headers):
                 ragged_row_count += 1
-                if len(ragged_samples) < 3:
-                    ragged_samples.append(
-                        f"row {row_number}: expected {len(headers)} columns, found {len(row)}"
-                    )
-            signature = tuple(row)
-            if signature in seen_rows:
-                duplicate_row_count += 1
-            else:
-                seen_rows.add(signature)
 
-            for column_number, cell in enumerate(row, start=1):
-                if not cell.strip():
+            normalized_row = tuple(cell.strip() for cell in row)
+            seen_rows[normalized_row] += 1
+
+            for column, cell in enumerate(row, start=1):
+                stripped = cell.strip()
+                if not stripped:
                     blank_cell_count += 1
-                if cell != cell.strip():
+                if cell != stripped and stripped:
                     whitespace_cell_count += 1
-                if is_formula_like(cell):
+                if is_formula_like(stripped):
                     formula_like_cell_count += 1
-                    if len(formula_samples) < 3:
-                        formula_samples.append(_sample(row_number, column_number, cell))
-                if _is_potential_pii(cell):
+                if looks_like_pii(stripped):
                     potential_pii_cell_count += 1
-                    if len(pii_samples) < 3:
-                        pii_samples.append(_sample(row_number, column_number, cell))
+
+        duplicate_row_count = sum(count - 1 for count in seen_rows.values() if count > 1)
 
     for candidate in (
         _issue(
             "blank-row",
             "warning",
-            "Blank data rows were found.",
+            "One or more data rows are completely blank.",
             blank_row_count,
-        ),
-        _issue(
-            "ragged-row",
-            "error",
-            "Data rows do not all match the header column count.",
-            ragged_row_count,
-            ragged_samples,
         ),
         _issue(
             "blank-cell",
             "info",
-            "Blank or whitespace-only cells were found.",
+            "One or more cells are blank after trimming whitespace.",
             blank_cell_count,
         ),
         _issue(
             "duplicate-row",
             "warning",
-            "Exact duplicate data rows were found.",
+            "One or more data rows are duplicates after trimming whitespace.",
             duplicate_row_count,
         ),
         _issue(
-            "whitespace",
+            "ragged-row",
+            "error",
+            "One or more data rows have a different number of columns than the header.",
+            ragged_row_count,
+        ),
+        _issue(
+            "whitespace-cell",
             "info",
-            "Cells with leading or trailing whitespace were found.",
+            "One or more cells contain leading or trailing whitespace.",
             whitespace_cell_count,
         ),
         _issue(
             "formula-like-cell",
             "warning",
-            "Cells with formula-like leading characters were found. "
-            "Review before opening in a spreadsheet.",
+            "One or more cells look like spreadsheet formulas and may execute when opened.",
             formula_like_cell_count,
-            formula_samples,
         ),
         _issue(
             "potential-pii",
-            "info",
-            "Cells resembling email addresses or phone numbers were found. This is heuristic only.",
+            "warning",
+            "One or more cells appear to contain personally identifiable information.",
             potential_pii_cell_count,
-            pii_samples,
         ),
     ):
         if candidate:
             issues.append(candidate)
 
-    summary = FileSummary(
-        path=str(path),
-        encoding=encoding,
-        delimiter=actual_delimiter,
+    summary = Summary(
+        delimiter=delimiter,
         column_count=len(headers),
         data_row_count=data_row_count,
-        total_row_count=data_row_count + 1,
         blank_row_count=blank_row_count,
         blank_cell_count=blank_cell_count,
         duplicate_row_count=duplicate_row_count,
