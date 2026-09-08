@@ -17,9 +17,7 @@ class FormulaHeaderSampleTests(unittest.TestCase):
             )
             report = inspect_file(path)
 
-        issue = next(
-            issue for issue in report.issues if issue.code == "formula-like-header"
-        )
+        issue = next(issue for issue in report.issues if issue.code == "formula-like-header")
         self.assertEqual(issue.count, 2)
         self.assertEqual(len(issue.samples), 2)
         self.assertIn("row 1, column 3", issue.samples[0])
