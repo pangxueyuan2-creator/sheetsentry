@@ -138,6 +138,11 @@ def sanitize_file(
                         seen_rows.add(signature)
                     writer.writerow(transformed)
 
+                # Ensure the complete replacement reaches the filesystem before the
+                # atomic rename makes it the visible output file.
+                temporary.flush()
+                os.fsync(temporary.fileno())
+
         os.replace(temp_name, output_path)
         temp_name = None
     finally:
