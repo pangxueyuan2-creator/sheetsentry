@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from sheetsentry.cli import run
 from sheetsentry.inspect import inspect_file, is_formula_like
@@ -129,6 +130,16 @@ class SanitizationTests(unittest.TestCase):
             source.read_text(encoding="utf-8"),
             (FIXTURES / "messy_contacts.csv").read_text(encoding="utf-8"),
         )
+
+    def test_sanitize_fsyncs_temp_file_before_replace(self) -> None:
+        source = FIXTURES / "messy_contacts.csv"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "clean.csv"
+            with patch("sheetsentry.sanitize.os.fsync") as fsync:
+                sanitize_file(source, output, SanitizationOptions(trim=True))
+
+        fsync.assert_called_once()
+        self.assertIsInstance(fsync.call_args.args[0], int)
 
     def test_refuses_output_equal_to_input(self) -> None:
         source = FIXTURES / "messy_contacts.csv"
