@@ -7,7 +7,6 @@ import os
 import re
 import tempfile
 import unicodedata
-from collections import defaultdict
 from pathlib import Path
 
 from .inspect import inspect_file, is_formula_like
@@ -24,12 +23,17 @@ def _normalize_header(value: str) -> str:
 
 
 def _unique_headers(headers: list[str]) -> list[str]:
-    seen: defaultdict[str, int] = defaultdict(int)
+    used: set[str] = set()
     result: list[str] = []
     for header in headers:
         base = _normalize_header(header)
-        seen[base] += 1
-        result.append(base if seen[base] == 1 else f"{base}_{seen[base]}")
+        candidate = base
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        used.add(candidate)
+        result.append(candidate)
     return result
 
 
