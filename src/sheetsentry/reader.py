@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import csv
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,7 +34,10 @@ def detect_encoding(path: Path) -> str:
     if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
         return "utf-16"
     try:
-        raw.decode("utf-8")
+        # Decode as a non-final chunk so a valid multi-byte UTF-8 code point split
+        # exactly at the bounded sample boundary is not mistaken for bad encoding.
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder.decode(raw, final=False)
     except UnicodeDecodeError as exc:
         raise InputError(
             "Unsupported text encoding. SheetSentry currently supports UTF-8 and UTF-16 files."
@@ -84,5 +88,10 @@ def open_rows(
         yield csv.reader(handle, delimiter=actual_delimiter), encoding, actual_delimiter, handle
     except csv.Error as exc:
         raise InputError(f"Malformed delimited text in {path}: {exc}") from exc
+    except UnicodeError as exc:
+        raise InputError(
+            f"Unsupported text encoding in {path}. "
+            "SheetSentry currently supports UTF-8 and UTF-16 files."
+        ) from exc
     finally:
         handle.close()
