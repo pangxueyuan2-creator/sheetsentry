@@ -20,10 +20,12 @@ class ReaderEncodingTests(unittest.TestCase):
             path = Path(directory) / "late-invalid.csv"
             path.write_bytes(b"column\n" + b"a" * _SAMPLE_BYTES + b"\xff\n")
 
-            with self.assertRaisesRegex(InputError, "Unsupported text encoding"):
-                with open_rows(path, ",") as opened_rows:
-                    rows, _encoding, _delimiter, _handle = opened_rows
-                    list(rows)
+            with (
+                self.assertRaisesRegex(InputError, "Unsupported text encoding"),
+                open_rows(path, ",") as opened_rows,
+            ):
+                rows, _encoding, _delimiter, _handle = opened_rows
+                list(rows)
 
 
 if __name__ == "__main__":
