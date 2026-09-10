@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import csv
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -27,13 +28,17 @@ def detect_encoding(path: Path) -> str:
     """Identify supported Unicode encodings without silently corrupting input."""
 
     _validate_path(path)
-    raw = path.read_bytes()[:_SAMPLE_BYTES]
+    with path.open("rb") as handle:
+        raw = handle.read(_SAMPLE_BYTES)
     if raw.startswith(b"\xef\xbb\xbf"):
         return "utf-8-sig"
     if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
         return "utf-16"
     try:
-        raw.decode("utf-8")
+        # Decode as a non-final chunk so a valid multi-byte UTF-8 code point split
+        # exactly at the bounded sample boundary is not mistaken for bad encoding.
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder.decode(raw, final=False)
     except UnicodeDecodeError as exc:
         raise InputError(
             "Unsupported text encoding. SheetSentry currently supports UTF-8 and UTF-16 files."
@@ -53,8 +58,14 @@ def detect_delimiter(path: Path, encoding: str, override: str | None = None) -> 
     if override is not None:
         return validate_delimiter(override)
 
-    with path.open("r", encoding=encoding, newline="") as handle:
-        sample = handle.read(_SAMPLE_BYTES)
+    try:
+        with path.open("r", encoding=encoding, newline="") as handle:
+            sample = handle.read(_SAMPLE_BYTES)
+    except UnicodeError as exc:
+        raise InputError(
+            f"Unsupported text encoding in {path}. "
+            "SheetSentry currently supports UTF-8 and UTF-16 files."
+        ) from exc
     if not sample:
         return ","
 
@@ -84,5 +95,10 @@ def open_rows(
         yield csv.reader(handle, delimiter=actual_delimiter), encoding, actual_delimiter, handle
     except csv.Error as exc:
         raise InputError(f"Malformed delimited text in {path}: {exc}") from exc
+    except UnicodeError as exc:
+        raise InputError(
+            f"Unsupported text encoding in {path}. "
+            "SheetSentry currently supports UTF-8 and UTF-16 files."
+        ) from exc
     finally:
         handle.close()
