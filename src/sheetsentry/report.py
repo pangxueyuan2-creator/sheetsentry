@@ -11,7 +11,8 @@ from .models import InspectionReport, SanitizationAudit
 def to_json(data: dict[str, Any]) -> str:
     """Render stable, UTF-8-friendly JSON for scripts and CI."""
 
-    return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    # ASCII escapes preserve JSON text even when Windows pipes use a legacy codec.
+    return json.dumps(data, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
 
 
 def _display_delimiter(delimiter: str) -> str:

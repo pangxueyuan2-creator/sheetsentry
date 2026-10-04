@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from .models import FileSummary, InspectionReport, Issue
-from .reader import open_rows
+from .reader import open_rows, row_fingerprint
 
 _REPORT_SCHEMA_VERSION = "1.0"
 _FORMULA_PREFIXES = (
@@ -56,7 +56,9 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
 
     issues: list[Issue] = []
     with open_rows(path, delimiter) as (reader, encoding, actual_delimiter, _handle):
-        headers = next(reader, None)
+        fingerprinted = row_fingerprint(reader)
+        first = next(fingerprinted, None)
+        headers, parsed_rows_sha256 = first if first is not None else (None, "")
         if headers is None or not any(cell.strip() for cell in headers):
             summary = FileSummary(
                 path=str(path),
@@ -130,7 +132,8 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
         ragged_samples: list[str] = []
         seen_rows: set[tuple[str, ...]] = set()
 
-        for row_number, row in enumerate(reader, start=2):
+        for row_number, (row, row_digest) in enumerate(fingerprinted, start=2):
+            parsed_rows_sha256 = row_digest
             data_row_count += 1
             if not any(cell.strip() for cell in row):
                 blank_row_count += 1
@@ -225,6 +228,7 @@ def inspect_file(path: Path, delimiter: str | None = None) -> InspectionReport:
         whitespace_cell_count=whitespace_cell_count,
         formula_like_cell_count=formula_like_cell_count,
         potential_pii_cell_count=potential_pii_cell_count,
+        parsed_rows_sha256=parsed_rows_sha256,
     )
     return InspectionReport(
         schema_version=_REPORT_SCHEMA_VERSION,

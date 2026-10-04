@@ -118,6 +118,11 @@ def _emit_inspection(report_format: str, report: object) -> None:
 def run(arguments: Sequence[str] | None = None) -> int:
     """Run the CLI and return a portable process exit code."""
 
+    # Preserve human-readable output without requiring a terminal code-page change.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="backslashreplace")
     parser = build_parser()
     args = parser.parse_args(arguments)
     try:

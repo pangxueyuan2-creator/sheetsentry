@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import codecs
 import csv
+import hashlib
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,6 +13,15 @@ from typing import TextIO
 
 _SAMPLE_BYTES = 65_536
 _ALLOWED_DELIMITERS = (",", "\t", ";", "|")
+
+
+def row_fingerprint(rows: Iterator[list[str]]) -> Iterator[tuple[list[str], str]]:
+    """Yield rows plus the cumulative SHA-256 of canonical parsed-row JSON lines."""
+    digest = hashlib.sha256()
+    for row in rows:
+        digest.update(json.dumps(row, ensure_ascii=True, separators=(",", ":")).encode("ascii"))
+        digest.update(b"\n")
+        yield row, digest.hexdigest()
 
 
 class InputError(ValueError):
