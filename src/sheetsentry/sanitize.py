@@ -7,11 +7,12 @@ import os
 import re
 import tempfile
 import unicodedata
+from dataclasses import replace
 from pathlib import Path
 
 from .inspect import inspect_file, is_formula_like
 from .models import SanitizationAudit, SanitizationOptions
-from .reader import InputError, open_rows
+from .reader import InputError, open_rows, row_fingerprint
 
 _ALLOWED_FORMULA_POLICIES = {"report-only", "apostrophe", "tab"}
 
@@ -79,7 +80,9 @@ def sanitize_file(
     try:
         with open_rows(input_path, options.input_delimiter) as opened_rows:
             reader, _encoding, _delimiter, _handle = opened_rows
-            headers = next(reader, None)
+            fingerprinted = row_fingerprint(reader)
+            first = next(fingerprinted, None)
+            headers, parsed_rows_sha256 = first if first is not None else (None, "")
             if headers is None or not any(cell.strip() for cell in headers):
                 raise InputError("Cannot sanitize an empty file without a header row.")
             output_headers = headers
@@ -112,7 +115,8 @@ def sanitize_file(
                 writer.writerow(neutralized_headers)
                 seen_rows: set[tuple[str, ...]] = set()
 
-                for row in reader:
+                for row, row_digest in fingerprinted:
+                    parsed_rows_sha256 = row_digest
                     if options.drop_blank_rows and not any(cell.strip() for cell in row):
                         modifications["blank_rows_dropped"] += 1
                         continue
@@ -138,18 +142,51 @@ def sanitize_file(
                         seen_rows.add(signature)
                     writer.writerow(transformed)
 
+                if parsed_rows_sha256 != input_report.summary.parsed_rows_sha256:
+                    raise InputError(
+                        "Input changed between inspection and sanitization; no output published."
+                    )
+
                 # Ensure the complete replacement reaches the filesystem before the
                 # atomic rename makes it the visible output file.
                 temporary.flush()
                 os.fsync(temporary.fileno())
 
-        os.replace(temp_name, output_path)
+        # Validate/report the complete unpublished output. Reading the destination
+        # after publication could instead inspect another producer's replacement.
+        output_report = inspect_file(Path(temp_name), options.output_delimiter)
+        output_summary = replace(output_report.summary, path=str(output_path))
+        if options.force:
+            os.replace(temp_name, output_path)
+        else:
+            # Windows rename refuses an existing target and needs no unlink after
+            # publication, which also avoids a successful output plus cleanup
+            # failure if another process locks the completed temporary file.
+            # POSIX rename may replace, so use an exclusive hard link there.
+            try:
+                if os.name == "nt":
+                    os.rename(temp_name, output_path)
+                else:
+                    os.link(temp_name, output_path)
+                    Path(temp_name).unlink()
+            except FileExistsError as exc:
+                raise InputError(
+                    f"Refusing to overwrite existing output: {output_path}. "
+                    "Pass --force to replace it."
+                ) from exc
         temp_name = None
+    except OSError as exc:
+        raise InputError(f"Unable to publish sanitized output: {exc}") from exc
     finally:
         if temp_name is not None:
-            Path(temp_name).unlink(missing_ok=True)
+            try:
+                Path(temp_name).unlink(missing_ok=True)
+            except OSError as exc:
+                raise InputError(
+                    f"Unable to remove temporary output {temp_name}; "
+                    "release external file locks and remove it manually."
+                ) from exc
 
-    output_report = inspect_file(output_path, options.output_delimiter)
     return SanitizationAudit(
         schema_version="1.0",
         input_path=str(input_path),
@@ -158,5 +195,5 @@ def sanitize_file(
         output_delimiter=options.output_delimiter,
         modifications=modifications,
         input_summary=input_report.summary,
-        output_summary=output_report.summary,
+        output_summary=output_summary,
     )

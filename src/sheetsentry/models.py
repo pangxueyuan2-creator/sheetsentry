@@ -37,6 +37,7 @@ class FileSummary:
     whitespace_cell_count: int
     formula_like_cell_count: int
     potential_pii_cell_count: int
+    parsed_rows_sha256: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

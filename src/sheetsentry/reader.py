@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import codecs
 import csv
+import hashlib
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,6 +13,15 @@ from typing import TextIO
 
 _SAMPLE_BYTES = 65_536
 _ALLOWED_DELIMITERS = (",", "\t", ";", "|")
+
+
+def row_fingerprint(rows: Iterator[list[str]]) -> Iterator[tuple[list[str], str]]:
+    """Yield rows plus the cumulative SHA-256 of canonical parsed-row JSON lines."""
+    digest = hashlib.sha256()
+    for row in rows:
+        digest.update(json.dumps(row, ensure_ascii=True, separators=(",", ":")).encode("ascii"))
+        digest.update(b"\n")
+        yield row, digest.hexdigest()
 
 
 class InputError(ValueError):
@@ -92,7 +103,12 @@ def open_rows(
     actual_delimiter = detect_delimiter(path, encoding, delimiter)
     handle = path.open("r", encoding=encoding, newline="")
     try:
-        yield csv.reader(handle, delimiter=actual_delimiter), encoding, actual_delimiter, handle
+        yield (
+            csv.reader(handle, delimiter=actual_delimiter, strict=True),
+            encoding,
+            actual_delimiter,
+            handle,
+        )
     except csv.Error as exc:
         raise InputError(f"Malformed delimited text in {path}: {exc}") from exc
     except UnicodeError as exc:
