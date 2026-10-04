@@ -33,6 +33,8 @@ sheetsentry sanitize FILE    write a cleaned copy
 ## Notes
 
 - Formula mitigation is not perfect across every spreadsheet app — keep the original and test the result
+- Malformed quoted CSV/TSV records are rejected instead of silently repaired. Valid quoted multiline cells and escaped quotes remain supported.
+- Sanitization publishes the completed file atomically. Without `--force`, it also preserves output files created during processing. This uses a same-directory hard link; a filesystem that cannot create hard links refuses the operation.
 - Not a full PII scanner or spreadsheet engine
 
 MIT.

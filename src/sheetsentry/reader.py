@@ -92,7 +92,12 @@ def open_rows(
     actual_delimiter = detect_delimiter(path, encoding, delimiter)
     handle = path.open("r", encoding=encoding, newline="")
     try:
-        yield csv.reader(handle, delimiter=actual_delimiter), encoding, actual_delimiter, handle
+        yield (
+            csv.reader(handle, delimiter=actual_delimiter, strict=True),
+            encoding,
+            actual_delimiter,
+            handle,
+        )
     except csv.Error as exc:
         raise InputError(f"Malformed delimited text in {path}: {exc}") from exc
     except UnicodeError as exc:

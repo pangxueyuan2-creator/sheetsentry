@@ -143,7 +143,21 @@ def sanitize_file(
                 temporary.flush()
                 os.fsync(temporary.fileno())
 
-        os.replace(temp_name, output_path)
+        if options.force:
+            os.replace(temp_name, output_path)
+        else:
+            # Publishing through an exclusive hard link closes the race between
+            # the initial existence check and completion of the transformations.
+            # The completed file is visible atomically, without clobbering any
+            # concurrently created output. Unsupported filesystems fail closed.
+            try:
+                os.link(temp_name, output_path)
+            except FileExistsError as exc:
+                raise InputError(
+                    f"Refusing to overwrite existing output: {output_path}. "
+                    "Pass --force to replace it."
+                ) from exc
+            Path(temp_name).unlink()
         temp_name = None
     finally:
         if temp_name is not None:
